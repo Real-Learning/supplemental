@@ -1,0 +1,375 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Long Number Arithmetic</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700&display=swap');
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f3f4f6;
+        }
+        .digit-field {
+            width: 2.5rem;
+            height: 3.5rem;
+            text-align: center;
+            font-size: 1.5rem;
+            border: 2px solid #d1d5db;
+            border-radius: 0.5rem;
+            transition: all 0.2s;
+            background-color: white;
+            color: #1f2937;
+        }
+        .dot-field {
+            width: 1.5rem;
+            height: 1.5rem;
+            border-radius: 9999px;
+            border: 2px solid #d1d5db;
+            background-color: transparent;
+            cursor: pointer;
+            transition: background-color 0.2s, border-color 0.2s;
+        }
+        .error {
+            border-color: #ef4444;
+            animation: shake 0.5s;
+        }
+        .correct {
+            border-color: #10b981;
+        }
+        .highlight {
+            background-color: #fef3c7;
+        }
+        @keyframes shake {
+            0%, 100% { transform: translateX(0); }
+            20%, 60% { transform: translateX(-5px); }
+            40%, 80% { transform: translateX(5px); }
+        }
+        .problem-grid-cell {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+    </style>
+</head>
+<body class="bg-gray-100 flex items-center justify-center min-h-screen p-4">
+
+    <div class="bg-white p-8 rounded-2xl shadow-xl max-w-lg w-full flex flex-col items-center">
+        <h1 class="text-3xl font-bold mb-6 text-gray-800">Long Number Arithmetic</h1>
+
+        <!-- Configuration Options -->
+        <div class="flex items-center space-x-4 mb-6 text-gray-700">
+            <span>Mode:</span>
+            <label class="flex items-center">
+                <input type="radio" name="mode" value="random" checked class="form-radio text-blue-600">
+                <span class="ml-2">Random</span>
+            </label>
+            <label class="flex items-center">
+                <input type="radio" name="mode" value="addition" class="form-radio text-blue-600">
+                <span class="ml-2">Addition</span>
+            </label>
+            <label class="flex items-center">
+                <input type="radio" name="mode" value="subtraction" class="form-radio text-blue-600">
+                <span class="ml-2">Subtraction</span>
+            </label>
+        </div>
+
+        <!-- Problem Display using CSS Grid for perfect alignment -->
+        <div id="problem-grid" class="grid gap-x-2 w-full mb-4">
+            <!-- This container will be populated dynamically by JavaScript -->
+        </div>
+
+        <!-- Feedback and buttons -->
+        <div id="message-container" class="h-10 text-center mb-6 text-xl font-semibold"></div>
+
+        <div class="flex space-x-4">
+            <button id="check-button" class="px-6 py-3 bg-blue-600 text-white font-bold rounded-full shadow-lg hover:bg-blue-700 transition duration-300 transform hover:scale-105">
+                Check Result
+            </button>
+            <button id="new-problem-button" class="px-6 py-3 bg-gray-300 text-gray-800 font-bold rounded-full shadow-lg hover:bg-gray-400 transition duration-300 transform hover:scale-105">
+                New Problem
+            </button>
+        </div>
+    </div>
+
+    <script>
+        // --- DOM Elements ---
+        const problemGridEl = document.getElementById('problem-grid');
+        const messageContainerEl = document.getElementById('message-container');
+        const checkButton = document.getElementById('check-button');
+        const newProblemButton = document.getElementById('new-problem-button');
+
+        // --- State Variables ---
+        let number1, number2, operation;
+        let lastFocusedInput = null;
+
+        // --- Utility Functions ---
+        function generateRandomNumber(length) {
+            return Math.floor(Math.random() * (10 ** length - 10 ** (length - 1))) + 10 ** (length - 1);
+        }
+
+        function createInput(type, className, id) {
+            const input = document.createElement('input');
+            input.type = 'text';
+            input.className = className;
+            input.id = id;
+            input.autocomplete = "off";
+            input.setAttribute('inputmode', 'numeric');
+            
+            input.addEventListener('focus', () => {
+                lastFocusedInput = input;
+            });
+            
+            input.oninput = (e) => {
+                // Sanitize the input to allow only a single digit
+                const digit = e.data ? e.data.replace(/[^0-9]/g, '').slice(-1) : '';
+                e.target.value = digit;
+                
+                // Only move the focus when a digit is entered
+                if (e.target.value.length === 1) {
+                    const currentIdIndex = parseInt(id.split('-')[1]);
+                    const prevInput = document.getElementById(`result-${currentIdIndex - 1}`);
+                    if (prevInput) {
+                        prevInput.focus();
+                    }
+                }
+                
+                clearHighlighting();
+                messageContainerEl.textContent = '';
+            };
+            return input;
+        }
+
+        function createDot(className, id) {
+            const dot = document.createElement('div');
+            dot.className = className;
+            dot.id = id;
+            dot.onclick = () => {
+                dot.classList.toggle('bg-blue-600');
+                clearHighlighting();
+                messageContainerEl.textContent = '';
+                if (lastFocusedInput) {
+                    lastFocusedInput.focus();
+                }
+            };
+            return dot;
+        }
+
+        function clearHighlighting() {
+            document.querySelectorAll('.error, .correct, .highlight').forEach(el => {
+                el.classList.remove('error', 'correct', 'highlight');
+            });
+        }
+
+        // --- Core Game Logic ---
+        function generateProblem() {
+            // Clear existing dots
+            document.querySelectorAll('.dot-field').forEach(dot => dot.classList.remove('bg-blue-600'));
+
+            // Get selected mode
+            const mode = document.querySelector('input[name="mode"]:checked').value;
+            const length = Math.floor(Math.random() * 4) + 4; // Numbers of 4-7 digits
+
+            // Determine operation
+            if (mode === 'random') {
+                operation = Math.random() < 0.5 ? 'addition' : 'subtraction';
+            } else {
+                operation = mode;
+            }
+
+            // Generate numbers
+            if (operation === 'addition') {
+                number1 = generateRandomNumber(length);
+                number2 = generateRandomNumber(length);
+            } else { // Subtraction
+                let temp1 = generateRandomNumber(length);
+                let temp2 = generateRandomNumber(length);
+                number1 = Math.max(temp1, temp2);
+                number2 = Math.min(temp1, temp2);
+            }
+            if (number1 === number2) number1++;
+
+            // Clear previous UI and state
+            clearHighlighting();
+            messageContainerEl.textContent = '';
+            problemGridEl.innerHTML = '';
+
+            const numDigits = Math.max(String(number1).length, String(number2).length) + (operation === 'addition' ? 1 : 0);
+            
+            // The number of dots is always one less than the number of digit columns
+            const numDots = numDigits - 1;
+
+            // Set up grid
+            problemGridEl.style.gridTemplateColumns = `repeat(${numDigits + 1}, minmax(0, 1fr))`; // +1 for the operator column
+
+            // --- Populate Grid ---
+            // Row 1: Carry/Borrow dots
+            problemGridEl.appendChild(document.createElement('div')); // Empty cell for alignment
+            for (let i = 0; i < numDots; i++) {
+                const cell = document.createElement('div');
+                cell.className = 'problem-grid-cell';
+                const carryField = createDot('dot-field', `carry-${i}`);
+                cell.appendChild(carryField);
+                problemGridEl.appendChild(cell);
+            }
+            
+            // Fill remaining space with empty cells for alignment
+            for (let i = numDots; i < numDigits; i++) {
+                problemGridEl.appendChild(document.createElement('div'));
+            }
+            
+            // Row 2: Number 1
+            problemGridEl.appendChild(document.createElement('div')); // Empty cell for operator
+            for (let i = 0; i < numDigits; i++) {
+                const cell = document.createElement('div');
+                cell.className = 'problem-grid-cell text-3xl font-bold';
+                const digit = String(number1).padStart(numDigits, ' ')[i];
+                cell.textContent = digit === ' ' ? '' : digit;
+                problemGridEl.appendChild(cell);
+            }
+
+            // Row 3: Operator and Number 2
+            const operatorCell = document.createElement('div');
+            operatorCell.className = 'problem-grid-cell text-4xl font-bold text-gray-500';
+            operatorCell.textContent = operation === 'addition' ? '+' : '–';
+            problemGridEl.appendChild(operatorCell);
+            
+            for (let i = 0; i < numDigits; i++) {
+                const cell = document.createElement('div');
+                cell.className = 'problem-grid-cell text-3xl font-bold';
+                const digit = String(number2).padStart(numDigits, ' ')[i];
+                cell.textContent = digit === ' ' ? '' : digit;
+                problemGridEl.appendChild(cell);
+            }
+            
+            // Row 4: Separator line
+            const separatorCell = document.createElement('div');
+            separatorCell.className = 'col-span-full w-full h-1 bg-gray-300 rounded-full my-2';
+            problemGridEl.appendChild(separatorCell);
+
+            // Row 5: Result input fields
+            problemGridEl.appendChild(document.createElement('div')); // Empty cell for operator
+            for (let i = 0; i < numDigits; i++) {
+                const cell = document.createElement('div');
+                cell.className = 'problem-grid-cell';
+                const resultField = createInput('text', 'digit-field', `result-${i}`);
+                cell.appendChild(resultField);
+                problemGridEl.appendChild(cell);
+            }
+            
+            // Automatically focus the rightmost input field
+            const rightmostInput = document.getElementById(`result-${numDigits - 1}`);
+            if (rightmostInput) {
+                rightmostInput.focus();
+            }
+        }
+
+        function checkResult() {
+            clearHighlighting();
+
+            // Get user inputs and convert dot state to boolean
+            const userCarries = Array.from(document.querySelectorAll('.dot-field')).map(el => el.classList.contains('bg-blue-600'));
+            const userResultsEl = Array.from(document.querySelectorAll('.digit-field'));
+            const userResults = userResultsEl.map(el => el.value);
+
+            // Flag to track if we've seen a non-empty digit
+            let foundNonEmptyDigit = false;
+            // Check for "holes" (empty fields after a non-empty digit)
+            for (let i = 0; i < userResults.length; i++) {
+                if (userResults[i] !== '') {
+                    foundNonEmptyDigit = true;
+                } else if (foundNonEmptyDigit) {
+                    messageContainerEl.textContent = 'A blank space cannot be in the middle of a number.';
+                    messageContainerEl.className = 'h-10 text-center mb-6 text-xl font-semibold text-red-600';
+                    userResultsEl[i].classList.add('error');
+                    return;
+                }
+            }
+
+            // Now, treat leading blanks as zeros
+            const filledResults = userResults.map(val => val === '' ? '0' : val);
+
+            // Check if all fields are still empty.
+            const allFieldsEmpty = filledResults.every(val => val === '0');
+            if (allFieldsEmpty) {
+                messageContainerEl.textContent = '';
+                return;
+            }
+
+            let correct = true;
+            let currentCarry = 0;
+            const numDigits = filledResults.length;
+            let errorFound = false;
+            let rightmostErrorElement = null;
+
+            // Loop from right to left (least significant digit to most)
+            for (let i = numDigits - 1; i >= 0; i--) {
+                const digit1 = parseInt(String(number1).padStart(numDigits, '0')[i]);
+                const digit2 = parseInt(String(number2).padStart(numDigits, '0')[i]);
+                const userResultDigit = parseInt(filledResults[i] || '0');
+                
+                let actualResultDigit;
+                let actualCarry;
+
+                if (operation === 'addition') {
+                    const sum = digit1 + digit2 + currentCarry;
+                    actualResultDigit = sum % 10;
+                    actualCarry = Math.floor(sum / 10);
+                } else { // Subtraction
+                    let diff = digit1 - digit2 - currentCarry;
+                    if (diff < 0) {
+                        diff += 10;
+                        actualCarry = 1;
+                    } else {
+                        actualCarry = 0;
+                    }
+                    actualResultDigit = diff;
+                }
+
+                // Check result digit for the current column. This is the right-most check.
+                if (userResultDigit !== actualResultDigit) {
+                    rightmostErrorElement = document.getElementById(`result-${i}`);
+                    errorFound = true;
+                    break;
+                }
+                
+                // For the leftmost result digit, there is no corresponding carry dot to check
+                const dotIndex = i - 1;
+                if (dotIndex >= 0) {
+                    const userCarryDot = userCarries[dotIndex];
+                    if (userCarryDot !== (actualCarry === 1)) {
+                        rightmostErrorElement = document.getElementById(`carry-${dotIndex}`);
+                        errorFound = true;
+                        break;
+                    }
+                }
+                
+                // Update carry for the next iteration (to the left)
+                currentCarry = actualCarry;
+            }
+
+            if (errorFound && rightmostErrorElement) {
+                rightmostErrorElement.classList.add('error', 'highlight');
+                messageContainerEl.textContent = 'Oops! Incorrect value.';
+                messageContainerEl.className = 'h-10 text-center mb-6 text-xl font-semibold text-red-600';
+            } else {
+                messageContainerEl.textContent = 'Correct! Great job!';
+                messageContainerEl.className = 'h-10 text-center mb-6 text-xl font-semibold text-green-600';
+                document.querySelectorAll('.digit-field, .dot-field').forEach(el => el.classList.add('correct'));
+            }
+        }
+
+        // --- Event Listeners ---
+        checkButton.addEventListener('click', checkResult);
+        newProblemButton.addEventListener('click', generateProblem);
+        document.querySelectorAll('input[name="mode"]').forEach(radio => {
+            radio.addEventListener('change', generateProblem);
+        });
+
+        // --- Initial Load ---
+        window.onload = generateProblem;
+
+    </script>
+</body>
+</html>
